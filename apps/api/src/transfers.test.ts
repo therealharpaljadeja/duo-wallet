@@ -97,6 +97,36 @@ function createTransferDatabase() {
   return { captured, database: database as unknown as Database };
 }
 
+function createActivityDatabase(hasActivity: boolean) {
+  const database = {
+    insert(table: unknown) {
+      const query = {
+        values: () => query,
+        onConflictDoUpdate: () => query,
+        async returning() {
+          if (table === users) {
+            return [{ id: "user-1", email: "owner@example.com" }];
+          }
+          if (table === wallets) {
+            return [{ id: "wallet-1", address: walletAddress, chain: "EVM" }];
+          }
+          return [];
+        },
+      };
+      return query;
+    },
+    select() {
+      const query = {
+        from: () => query,
+        where: () => query,
+        limit: async () => (hasActivity ? [{ id: transferId }] : []),
+      };
+      return query;
+    },
+  };
+  return database as unknown as Database;
+}
+
 describe("transfer approval claims", () => {
   const apps: ReturnType<typeof Fastify>[] = [];
 
@@ -182,5 +212,60 @@ describe("web transfer creation", () => {
       recipientAddress: "0x2222222222222222222222222222222222222222",
       amountWei: "1250000000000000000",
     });
+  });
+});
+
+describe("wallet transfer activity", () => {
+  const apps: ReturnType<typeof Fastify>[] = [];
+
+  afterEach(async () => {
+    await Promise.all(apps.splice(0).map((app) => app.close()));
+  });
+
+  it.each([
+    [false, false],
+    [true, true],
+  ])("reports whether an authenticated wallet has activity", async (hasActivity, expected) => {
+    const app = Fastify();
+    apps.push(app);
+    await registerTransferRoutes(app, {
+      db: createActivityDatabase(hasActivity),
+      environment,
+      verifyDynamicToken: async () => ({
+        dynamicUserId: "dynamic-user-1",
+        email: "owner@example.com",
+        wallet: { address: walletAddress },
+      }),
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/transfers/activity?wallet_address=${walletAddress}`,
+      headers: { authorization: "Bearer dynamic-token" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ has_activity: expected });
+  });
+
+  it("rejects activity lookups without an authenticated wallet session", async () => {
+    const app = Fastify();
+    apps.push(app);
+    await registerTransferRoutes(app, {
+      db: createActivityDatabase(false),
+      environment,
+      verifyDynamicToken: async () => {
+        throw new Error("invalid token");
+      },
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/transfers/activity?wallet_address=${walletAddress}`,
+      headers: { authorization: "Bearer invalid" },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ error: "invalid_dynamic_session" });
   });
 });

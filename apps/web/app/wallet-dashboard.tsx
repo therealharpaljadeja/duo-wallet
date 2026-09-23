@@ -115,14 +115,13 @@ export function WalletDashboard() {
 
         {isLoggedIn ? (
           <>
-            {wallet ? <WalletWorkspace walletAddress={wallet.address} /> : (
+            {wallet ? <WalletWorkspace walletAddress={wallet.address} mcpUrl={mcpUrl} /> : (
               <div className="wallet-panel empty-state">
                 <span className="pulse" />
                 <p>Creating your embedded EVM wallet…</p>
               </div>
             )}
             {syncError ? <p className="inline-error dashboard-error">{syncError}</p> : null}
-            <AgentSetup mcpUrl={mcpUrl} />
           </>
         ) : null}
       </section>
