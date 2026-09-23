@@ -6,7 +6,7 @@ import type { DynamicIdentity } from "./dynamic-auth.js";
 import type { Environment } from "./env.js";
 import { getBearerToken } from "./http.js";
 import { upsertIdentity } from "./identity.js";
-import { getMonadBalance } from "./transfer.js";
+import { getZerionMonadAssets, ZerionRequestError } from "./zerion.js";
 
 const walletQuerySchema = z.object({
   address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
@@ -42,7 +42,11 @@ export async function registerWalletRoutes(
 
     const { wallet } = await upsertIdentity(db, identity);
     try {
-      const balance = await getMonadBalance(environment.MONAD_RPC_URL, wallet.address);
+      const portfolio = await getZerionMonadAssets({
+        apiUrl: environment.ZERION_API_URL,
+        apiKey: environment.ZERION_API_KEY,
+        walletAddress: wallet.address,
+      });
       return {
         wallet: {
           address: wallet.address,
@@ -50,20 +54,21 @@ export async function registerWalletRoutes(
           network: MONAD_TESTNET.name,
           chain_id: MONAD_TESTNET.id,
         },
-        assets: [
-          {
-            type: "native",
-            name: MONAD_TESTNET.nativeCurrency.name,
-            symbol: MONAD_TESTNET.nativeCurrency.symbol,
-            decimals: MONAD_TESTNET.nativeCurrency.decimals,
-            amount: balance.amount,
-            amount_wei: balance.amountWei,
-          },
-        ],
+        portfolio: {
+          total_value_usd: portfolio.totalValueUsd,
+          currency: "usd",
+          source: "zerion",
+        },
+        assets: portfolio.assets,
       };
     } catch (error) {
-      request.log.warn({ err: error }, "Monad balance lookup failed");
-      return reply.code(502).send({ error: "balance_lookup_failed" });
+      request.log.warn({ err: error }, "Zerion asset lookup failed");
+      if (error instanceof ZerionRequestError && error.status === 202) {
+        return reply.header("retry-after", "3").code(503).send({
+          error: "assets_indexing",
+        });
+      }
+      return reply.code(502).send({ error: "assets_lookup_failed" });
     }
   });
 }

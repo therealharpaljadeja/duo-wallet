@@ -9,6 +9,7 @@ It lets a coding agent read a wallet address and prepare native MON transfers. T
 - OAuth authorization-code flow with PKCE, dynamic client registration, refresh-token rotation, and revocation.
 - MCP Streamable HTTP endpoint with OAuth discovery metadata.
 - Email OTP authentication through Dynamic and an automatically created embedded EVM wallet.
+- Monad testnet fungible balances, token metadata, and available USD values through Zerion.
 - `wallet_get_address` under the `wallet:read` scope.
 - `wallet_prepare_transfer` and `wallet_get_transfer_status` under the `wallet:transfer` scope.
 - Immutable, short-lived transfer requests with explicit browser approval.
@@ -52,22 +53,24 @@ Ask your agent to get your wallet address or prepare a Monad testnet transfer. P
 2. Create a sandbox environment in the [Dynamic dashboard](https://app.dynamic.xyz).
 3. Enable Email OTP authentication and EVM embedded wallets with **Create on sign up**.
 4. Copy the Dynamic environment ID.
-5. Create the local environment file:
+5. Create an API key in the [Zerion dashboard](https://dashboard.zerion.io).
+6. Create the local environment file:
 
    ```bash
    cp .env.example .env
    ```
 
-6. Set at least these values in `.env`:
+7. Set at least these values in `.env`:
 
    ```dotenv
    DYNAMIC_ENVIRONMENT_ID=your-dynamic-environment-id
+   ZERION_API_KEY=your-zerion-api-key
    TOKEN_PEPPER=replace-this-with-a-long-random-value
    ```
 
    Generate a suitable pepper with `openssl rand -hex 32`. Never commit `.env`.
 
-7. Build and start the complete stack:
+8. Build and start the complete stack:
 
    ```bash
    docker compose up --build
@@ -169,11 +172,13 @@ Useful commands:
 | `API_URL` | API and web | No | Exact public origin of the API and OAuth issuer. |
 | `DYNAMIC_ENVIRONMENT_ID` | API and web | No | Dynamic project environment identifier. |
 | `MONAD_RPC_URL` | API and web | No | Monad testnet JSON-RPC endpoint. |
+| `ZERION_API_URL` | API | No | Zerion API origin; defaults to `https://api.zerion.io`. |
+| `ZERION_API_KEY` | API | Yes | Server-side API key for Monad testnet assets and balances. |
 | `DATABASE_URL` | API, worker, migration | Yes | PostgreSQL connection string. Compose overrides it for containers. |
 | `TOKEN_PEPPER` | API | Yes | Server-side pepper used when hashing OAuth tokens. Use at least 24 characters. |
 | `PORT` | API | No | API listen port; defaults to `3001`. |
 
-Never expose `TOKEN_PEPPER` or a production `DATABASE_URL` to browser code. The web application receives only public configuration at runtime.
+Never expose `ZERION_API_KEY`, `TOKEN_PEPPER`, or a production `DATABASE_URL` to browser code. The web application receives only public configuration at runtime.
 
 ### Database changes
 
@@ -248,12 +253,12 @@ The real Dynamic email-OTP and transaction flows require a configured sandbox an
 | Service | Local address | Responsibility |
 |---|---|---|
 | `web` | `http://localhost:3000` | Wallet dashboard, Dynamic authentication, OAuth consent, and transfer approval. |
-| `api` | `http://localhost:3001` | OAuth authorization server, Dynamic session verification, MCP resource server, and transfer verification. |
+| `api` | `http://localhost:3001` | OAuth authorization server, Dynamic session verification, Zerion asset adapter, MCP resource server, and transfer verification. |
 | `worker` | Private | Background processing and connection checks. |
 | `postgres` | `localhost:5432` | Users, public wallet data, OAuth state, hashed tokens, and transfer requests. |
 | `migrate` | One-shot | Applies versioned SQL migrations before application services start. |
 
-Dynamic owns the embedded-wallet custody and key-management layer. The API and worker receive only public wallet information and authenticated session claims.
+Dynamic owns the embedded-wallet custody and key-management layer. The API and worker receive only public wallet information and authenticated session claims. Zerion supplies Monad testnet fungible positions and available pricing metadata; its API key remains confined to the API service.
 
 ## Production deployment on Railway
 
@@ -262,7 +267,7 @@ Create one Railway project with PostgreSQL and three services built from this re
 | Railway service | Docker target | Required configuration |
 |---|---|---|
 | Web | `web-production` | `API_URL`, `DYNAMIC_ENVIRONMENT_ID`, `MONAD_RPC_URL` |
-| API | `api-production` | `API_URL`, `WEB_URL`, `DATABASE_URL`, `DYNAMIC_ENVIRONMENT_ID`, `MONAD_RPC_URL`, `TOKEN_PEPPER`, `PORT` |
+| API | `api-production` | `API_URL`, `WEB_URL`, `DATABASE_URL`, `DYNAMIC_ENVIRONMENT_ID`, `MONAD_RPC_URL`, `ZERION_API_KEY`, `TOKEN_PEPPER`, `PORT` |
 | Worker | `worker-production` | `DATABASE_URL` |
 
 Run `pnpm db:migrate` as the API service's pre-deploy command. Give the web and API services public HTTPS domains, set `API_URL` and `WEB_URL` to those exact origins, and add the web origin to Dynamic's allowed origins.

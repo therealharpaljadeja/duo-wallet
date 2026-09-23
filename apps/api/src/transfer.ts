@@ -48,22 +48,6 @@ async function rpcRequest<T>(rpcUrl: string, method: string, params: unknown[]):
   return payload.result ?? null;
 }
 
-export async function getMonadBalance(
-  rpcUrl: string,
-  walletAddress: string,
-): Promise<{ amount: string; amountWei: string }> {
-  const result = await rpcRequest<string>(rpcUrl, "eth_getBalance", [
-    walletAddress,
-    "latest",
-  ]);
-  if (!result || !/^0x[0-9a-f]+$/i.test(result)) {
-    throw new Error("Monad RPC returned an invalid wallet balance");
-  }
-
-  const amountWei = BigInt(result).toString();
-  return { amount: formatWeiAsMon(amountWei), amountWei };
-}
-
 export async function verifyMonadTransfer(
   rpcUrl: string,
   input: {

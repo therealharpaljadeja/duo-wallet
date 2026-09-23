@@ -20,14 +20,17 @@ policy layers limit the agent's authority.
   rotation, and revocation.
 - Email OTP authentication and one Dynamic embedded EVM wallet per user.
 - Monad testnet is the only configured network.
+- Zerion provides normalized Monad testnet native and ERC-20 balances, token
+  metadata, and available USD values to the authenticated Assets screen.
 - `wallet_get_address` provides read-only wallet identity.
 - `wallet_prepare_transfer` creates an immutable native MON transfer request.
 - Every transfer is reviewed and signed by the wallet owner in the browser.
 - `wallet_get_transfer_status` reports approval and confirmation state.
 - The server stores public wallet and transaction metadata but no private keys,
   seed phrases, Dynamic JWTs, or key shares.
-- The web application supports authentication, wallet-address display, MCP client
-  setup, OAuth consent, and transaction approval.
+- The web application supports authentication, assets, Send, Receive,
+  wallet-address display, MCP client setup, OAuth consent, and transaction
+  approval.
 
 ## Product principles
 
@@ -412,8 +415,9 @@ Objective: establish stable contracts and remove architectural ambiguity.
 
 - Confirm whether Monad testnet remains the first network or the project is moving
   to another network.
-- Select providers for RPC, native/ERC-20 balances, token metadata, prices,
-  transaction history, simulations, and swap quotes.
+- Use Zerion for Monad testnet native/ERC-20 balances, token metadata, and
+  available prices. Keep direct JSON-RPC for transaction verification.
+- Select providers for transaction history, simulations, and swap quotes.
 - Implement shared domain contracts and provider interfaces.
 - Define data freshness, caching, pagination, rate limits, degraded states, and
   price-unavailable behavior.
@@ -615,8 +619,9 @@ Objective: add non-core discovery and growth loops after wallet utility is stabl
 
 The first engineering epic is **Wallet visibility**:
 
-1. Add a chain-data provider interface and Monad testnet implementation.
-2. Add native balance, token balance, and activity services with mocked tests.
+1. Add a Zerion provider adapter for Monad testnet fungible positions.
+2. Add normalized native and token balance services with mocked tests, then add
+   the activity service.
 3. Add authenticated API routes for the web dashboard.
 4. Build Home portfolio, Receive, Activity, and transaction-detail surfaces.
 5. Add `wallet_get_balance`, `wallet_get_portfolio`, `wallet_list_assets`,
@@ -629,6 +634,8 @@ and introduces no new signing authority.
 
 ## External dependencies requiring confirmation
 
+- [Zerion supported chains](https://developers.zerion.io/supported-blockchains)
+- [Zerion wallet fungible positions](https://developers.zerion.io/api-reference/wallets/get-wallet-fungible-positions)
 - [Dynamic agent wallet patterns](https://www.dynamic.xyz/docs/overview/agents/overview)
 - [Dynamic delegated access](https://www.dynamic.xyz/docs/overview/wallets/embedded-wallets/mpc/delegated-access/overview)
 - [Dynamic delegation webhook and storage](https://www.dynamic.xyz/docs/react/wallets/embedded-wallets/mpc/delegated-access/receiving-delegation)

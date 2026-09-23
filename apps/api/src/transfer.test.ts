@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   formatWeiAsMon,
-  getMonadBalance,
   parseMonAmount,
   verifyMonadTransfer,
 } from "./transfer.js";
@@ -63,28 +62,5 @@ describe("Monad transaction verification", () => {
         amountWei: "1000000000000000000",
       }),
     ).resolves.toBe("confirmed");
-  });
-});
-
-describe("Monad balance lookup", () => {
-  afterEach(() => vi.restoreAllMocks());
-
-  it("returns exact native balance values without floating-point conversion", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0x1121d33597384000" }),
-        { status: 200 },
-      ),
-    );
-
-    await expect(
-      getMonadBalance(
-        "https://rpc.example",
-        "0x1111111111111111111111111111111111111111",
-      ),
-    ).resolves.toEqual({
-      amount: "1.2345",
-      amountWei: "1234500000000000000",
-    });
   });
 });

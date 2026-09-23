@@ -8,6 +8,8 @@ const environmentSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3001),
   TOKEN_PEPPER: z.string().min(24),
   WEB_URL: z.url().default("http://localhost:3000"),
+  ZERION_API_KEY: z.string().min(1),
+  ZERION_API_URL: z.url().default("https://api.zerion.io"),
 });
 
 export type Environment = z.infer<typeof environmentSchema>;

@@ -11,12 +11,18 @@ import { usePublicConfig } from "./providers";
 type WalletView = "assets" | "send" | "receive";
 
 interface WalletAsset {
-  type: "native";
+  id: string;
+  type: "native" | "erc20";
   name: string;
   symbol: string;
   decimals: number;
   amount: string;
-  amount_wei: string;
+  amount_raw: string;
+  contract_address: string | null;
+  price_usd: number | null;
+  value_usd: number | null;
+  change_1d: number | null;
+  verified: boolean;
 }
 
 interface WalletResponse {
@@ -25,6 +31,11 @@ interface WalletResponse {
     chain: string;
     network: string;
     chain_id: number;
+  };
+  portfolio: {
+    total_value_usd: number | null;
+    currency: "usd";
+    source: "zerion";
   };
   assets: WalletAsset[];
   error?: string;
@@ -36,6 +47,16 @@ function shortAddress(address: string) {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
+const usdFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 2,
+});
+
+function formatUsd(value: number | null) {
+  return value === null ? undefined : usdFormatter.format(value);
+}
+
 function amountToWei(value: string) {
   const match = /^(0|[1-9]\d*)(?:\.(\d{1,18}))?$/.exec(value.trim());
   if (!match) return undefined;
@@ -45,8 +66,11 @@ function amountToWei(value: string) {
 }
 
 function assetErrorMessage(error?: string) {
-  if (error === "balance_lookup_failed") {
-    return "Monad testnet did not return the balance. Try refreshing.";
+  if (error === "assets_indexing") {
+    return "Zerion is indexing this wallet. Try refreshing in a few seconds.";
+  }
+  if (error === "assets_lookup_failed") {
+    return "Zerion did not return Monad testnet assets. Try refreshing.";
   }
   if (error === "invalid_dynamic_session") return "Your wallet session has expired.";
   return "The wallet balance is temporarily unavailable.";
@@ -57,6 +81,7 @@ export function WalletWorkspace({ walletAddress }: { walletAddress: string }) {
   const { openFundingOptions } = useOpenFundingOptions();
   const [view, setView] = useState<WalletView>("assets");
   const [assets, setAssets] = useState<WalletAsset[]>();
+  const [portfolioValueUsd, setPortfolioValueUsd] = useState<number | null>(null);
   const [assetError, setAssetError] = useState<string>();
   const [loadingAssets, setLoadingAssets] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -65,9 +90,9 @@ export function WalletWorkspace({ walletAddress }: { walletAddress: string }) {
   const [sendError, setSendError] = useState<string>();
   const [preparing, setPreparing] = useState(false);
 
-  const nativeAsset = assets?.[0];
+  const nativeAsset = assets?.find((asset) => asset.type === "native");
   const balanceWei = useMemo(
-    () => (nativeAsset ? BigInt(nativeAsset.amount_wei) : undefined),
+    () => (nativeAsset ? BigInt(nativeAsset.amount_raw) : undefined),
     [nativeAsset],
   );
 
@@ -90,11 +115,12 @@ export function WalletWorkspace({ walletAddress }: { walletAddress: string }) {
         | WalletResponse
         | undefined;
       if (!response.ok || !result) {
-        throw new Error(result?.error ?? "balance_lookup_failed");
+        throw new Error(result?.error ?? "assets_lookup_failed");
       }
       setAssets(result.assets);
+      setPortfolioValueUsd(result.portfolio.total_value_usd);
     } catch (error) {
-      setAssetError(error instanceof Error ? error.message : "balance_lookup_failed");
+      setAssetError(error instanceof Error ? error.message : "assets_lookup_failed");
     } finally {
       setLoadingAssets(false);
     }
@@ -220,29 +246,47 @@ export function WalletWorkspace({ walletAddress }: { walletAddress: string }) {
             </div>
 
             <div className="balance-card">
-              <span>Total balance</span>
+              <span>MON balance</span>
               <strong>{loadingAssets && !nativeAsset ? "—" : `${nativeAsset?.amount ?? "0"} MON`}</strong>
-              <small>Fiat pricing is not yet available on Monad testnet.</small>
+              <small>
+                {formatUsd(portfolioValueUsd)
+                  ? `${formatUsd(portfolioValueUsd)} total asset value · Zerion`
+                  : "Monad testnet assets powered by Zerion"}
+              </small>
               <div className="wallet-actions">
                 <button className="primary-button" onClick={() => chooseView("send")}>Send</button>
                 <button className="secondary-button" onClick={() => chooseView("receive")}>Receive</button>
               </div>
             </div>
 
-            <div className="asset-list-header"><span>Asset</span><span>Balance</span></div>
+            <div className="asset-list-header">
+              <span>Assets{assets ? ` · ${assets.length}` : ""}</span><span>Balance</span>
+            </div>
             {assetError ? (
               <div className="workspace-error">
                 <p>{assetErrorMessage(assetError)}</p>
                 <button className="text-button" onClick={() => void loadAssets()}>Try again</button>
               </div>
-            ) : loadingAssets && !nativeAsset ? (
+            ) : loadingAssets && !assets ? (
               <div className="asset-loading"><span className="pulse" /> Reading onchain balance…</div>
             ) : (
-              <button className="asset-row" onClick={() => chooseView("send")}>
-                <span className="asset-token">M</span>
-                <span className="asset-name"><strong>Monad</strong><small>MON · Native asset</small></span>
-                <span className="asset-balance"><strong>{nativeAsset?.amount ?? "0"} MON</strong><small>Monad testnet</small></span>
-              </button>
+              <div className="asset-rows">
+                {assets?.map((asset) => (
+                  <div className="asset-row" key={asset.id}>
+                    <span className="asset-token">{asset.symbol.slice(0, 1).toUpperCase()}</span>
+                    <span className="asset-name">
+                      <strong>{asset.name}</strong>
+                      <small>
+                        {asset.symbol} · {asset.type === "native" ? "Native asset" : asset.verified ? "Verified token" : "Unverified token"}
+                      </small>
+                    </span>
+                    <span className="asset-balance">
+                      <strong>{asset.amount} {asset.symbol}</strong>
+                      <small>{formatUsd(asset.value_usd) ?? "Price unavailable"}</small>
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
           </section>
         ) : null}

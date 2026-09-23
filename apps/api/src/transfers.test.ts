@@ -21,6 +21,8 @@ const environment: Environment = {
   PORT: 3001,
   TOKEN_PEPPER: "test-token-pepper-at-least-24-characters",
   WEB_URL: "http://localhost:3000",
+  ZERION_API_KEY: "test-zerion-key",
+  ZERION_API_URL: "https://api.zerion.io",
 };
 
 function createClaimDatabase() {
