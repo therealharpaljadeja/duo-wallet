@@ -1,16 +1,34 @@
 "use client";
 
-import {
-  getAuthToken,
-  useOpenFundingOptions,
-} from "@dynamic-labs/sdk-react-core";
+import { getAuthToken, useOpenFundingOptions } from "@dynamic-labs/sdk-react-core";
 import { MONAD_TESTNET } from "@mcp-wallet/shared";
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertCircleIcon, ArrowLeftIcon, BotIcon, CheckCircle2Icon, CopyIcon,
+  DownloadIcon, ExternalLinkIcon, HouseIcon, PlusIcon, RefreshCwIcon,
+  SendIcon, WalletCardsIcon,
+} from "lucide-react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import {
+  Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent,
+  SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
+  SidebarProvider,
+} from "@/components/ui/sidebar";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AgentSetup } from "./agent-setup";
 import { usePublicConfig } from "./providers";
 
 type WalletView = "home" | "send" | "receive" | "agent";
-type ActionIcon = "home" | "send" | "receive" | "fund" | "agent";
 
 interface WalletAsset {
   id: string;
@@ -29,32 +47,15 @@ interface WalletAsset {
 }
 
 interface WalletResponse {
-  wallet: {
-    address: string;
-    chain: string;
-    network: string;
-    chain_id: number;
-  };
-  portfolio: {
-    total_value_usd: number | null;
-    currency: "usd";
-    source: "zerion";
-  };
+  wallet: { address: string; chain: string; network: string; chain_id: number };
+  portfolio: { total_value_usd: number | null; currency: "usd"; source: "zerion" };
   assets: WalletAsset[];
   error?: string;
 }
 
 const addressPattern = /^0x[a-fA-F0-9]{40}$/;
-const usdFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 2,
-});
-const priceFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 6,
-});
+const usdFormatter = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+const priceFormatter = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 6 });
 
 function shortAddress(address: string) {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
@@ -82,39 +83,25 @@ function amountToWei(value: string) {
 }
 
 function assetErrorMessage(error?: string) {
-  if (error === "assets_indexing") {
-    return "Zerion is indexing this wallet. Try refreshing in a few seconds.";
-  }
-  if (error === "assets_lookup_failed") {
-    return "Zerion did not return Monad testnet assets. Try refreshing.";
-  }
+  if (error === "assets_indexing") return "Zerion is indexing this wallet. Try refreshing in a few seconds.";
+  if (error === "assets_lookup_failed") return "Zerion did not return Monad testnet assets. Try refreshing.";
   if (error === "invalid_dynamic_session") return "Your wallet session has expired.";
   return "The wallet balance is temporarily unavailable.";
 }
 
-function WalletIcon({ name }: { name: ActionIcon }) {
-  if (name === "home") {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 10 8-6 8 6v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1z" /></svg>;
-  }
-  if (name === "send") {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 3-7.5 18-3.2-7.3L3 10.5zM10.3 13.7 21 3" /></svg>;
-  }
-  if (name === "receive") {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v13m0 0 5-5m-5 5-5-5M5 21h14" /></svg>;
-  }
-  if (name === "fund") {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>;
-  }
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h8M8 12h5M6 3h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-7l-5 4v-4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /></svg>;
+function WorkspaceHeading({ id, eyebrow, title, action }: { id: string; eyebrow?: string; title: string; action: ReactNode }) {
+  return (
+    <header className="flex items-end justify-between gap-4">
+      <div className="grid gap-1.5">
+        {eyebrow ? <span className="text-xs font-medium tracking-wider text-muted-foreground uppercase">{eyebrow}</span> : null}
+        <h1 id={id} className="text-3xl font-semibold tracking-tight md:text-5xl">{title}</h1>
+      </div>
+      {action}
+    </header>
+  );
 }
 
-export function WalletWorkspace({
-  walletAddress,
-  mcpUrl,
-}: {
-  walletAddress: string;
-  mcpUrl: string;
-}) {
+export function WalletWorkspace({ walletAddress, mcpUrl }: { walletAddress: string; mcpUrl: string }) {
   const { apiUrl } = usePublicConfig();
   const { openFundingOptions } = useOpenFundingOptions();
   const [view, setView] = useState<WalletView>("home");
@@ -130,10 +117,7 @@ export function WalletWorkspace({
   const [preparing, setPreparing] = useState(false);
 
   const nativeAsset = assets?.find((asset) => asset.type === "native");
-  const balanceWei = useMemo(
-    () => (nativeAsset ? BigInt(nativeAsset.amount_raw) : undefined),
-    [nativeAsset],
-  );
+  const balanceWei = useMemo(() => (nativeAsset ? BigInt(nativeAsset.amount_raw) : undefined), [nativeAsset]);
 
   const loadAssets = useCallback(async () => {
     const token = getAuthToken();
@@ -142,18 +126,14 @@ export function WalletWorkspace({
       setLoadingAssets(false);
       return;
     }
-
     setLoadingAssets(true);
     setAssetError(undefined);
     try {
-      const response = await fetch(
-        `${apiUrl}/api/wallet?address=${encodeURIComponent(walletAddress)}`,
-        { headers: { authorization: `Bearer ${token}` } },
-      );
+      const response = await fetch(`${apiUrl}/api/wallet?address=${encodeURIComponent(walletAddress)}`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
       const result = (await response.json().catch(() => undefined)) as WalletResponse | undefined;
-      if (!response.ok || !result) {
-        throw new Error(result?.error ?? "assets_lookup_failed");
-      }
+      if (!response.ok || !result) throw new Error(result?.error ?? "assets_lookup_failed");
       setAssets(result.assets);
       setPortfolioValueUsd(result.portfolio.total_value_usd);
     } catch (error) {
@@ -167,16 +147,13 @@ export function WalletWorkspace({
     const token = getAuthToken();
     if (!token) return;
     try {
-      const response = await fetch(
-        `${apiUrl}/api/transfers/activity?wallet_address=${encodeURIComponent(walletAddress)}`,
-        { headers: { authorization: `Bearer ${token}` } },
-      );
+      const response = await fetch(`${apiUrl}/api/transfers/activity?wallet_address=${encodeURIComponent(walletAddress)}`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
       const result = (await response.json().catch(() => undefined)) as { has_activity?: boolean } | undefined;
-      if (response.ok && typeof result?.has_activity === "boolean") {
-        setHasActivity(result.has_activity);
-      }
+      if (response.ok && typeof result?.has_activity === "boolean") setHasActivity(result.has_activity);
     } catch {
-      // Keep onboarding in the sidebar when activity cannot be determined.
+      // Keep setup available in the sidebar when activity cannot be determined.
     }
   }, [apiUrl, walletAddress]);
 
@@ -199,55 +176,25 @@ export function WalletWorkspace({
   async function prepareSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSendError(undefined);
-
     const normalizedRecipient = recipient.trim();
     const amountWei = amountToWei(amount);
-    if (!addressPattern.test(normalizedRecipient)) {
-      setSendError("Enter a complete EVM recipient address.");
-      return;
-    }
-    if (normalizedRecipient.toLowerCase() === walletAddress.toLowerCase()) {
-      setSendError("The recipient cannot be your DUO wallet.");
-      return;
-    }
-    if (!amountWei || amountWei <= 0n) {
-      setSendError("Enter a positive MON amount with no more than 18 decimals.");
-      return;
-    }
-    if (balanceWei !== undefined && amountWei > balanceWei) {
-      setSendError("This amount is greater than your available balance.");
-      return;
-    }
-
+    if (!addressPattern.test(normalizedRecipient)) return setSendError("Enter a complete EVM recipient address.");
+    if (normalizedRecipient.toLowerCase() === walletAddress.toLowerCase()) return setSendError("The recipient cannot be your DUO wallet.");
+    if (!amountWei || amountWei <= 0n) return setSendError("Enter a positive MON amount with no more than 18 decimals.");
+    if (balanceWei !== undefined && amountWei > balanceWei) return setSendError("This amount is greater than your available balance.");
     const token = getAuthToken();
-    if (!token) {
-      setSendError("Your wallet session has expired. Sign in again.");
-      return;
-    }
+    if (!token) return setSendError("Your wallet session has expired. Sign in again.");
 
     setPreparing(true);
     try {
       const response = await fetch(`${apiUrl}/api/transfers`, {
         method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          wallet_address: walletAddress,
-          recipient_address: normalizedRecipient,
-          amount,
-        }),
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ wallet_address: walletAddress, recipient_address: normalizedRecipient, amount }),
       });
-      const result = (await response.json().catch(() => undefined)) as
-        | { approval_url?: string; error?: string; message?: string }
-        | undefined;
+      const result = (await response.json().catch(() => undefined)) as { approval_url?: string; error?: string; message?: string } | undefined;
       if (!response.ok || !result?.approval_url) {
-        throw new Error(
-          result?.error === "recipient_is_sender"
-            ? "The recipient cannot be your DUO wallet."
-            : result?.message ?? "The transfer request could not be prepared.",
-        );
+        throw new Error(result?.error === "recipient_is_sender" ? "The recipient cannot be your DUO wallet." : result?.message ?? "The transfer request could not be prepared.");
       }
       window.location.assign(result.approval_url);
     } catch (error) {
@@ -256,156 +203,154 @@ export function WalletWorkspace({
     }
   }
 
+  const backHome = (
+    <Button variant="ghost" onClick={() => chooseView("home")}>
+      <ArrowLeftIcon data-icon="inline-start" /> Back home
+    </Button>
+  );
+
   return (
-    <section className="wallet-workspace" aria-label="DUO wallet">
-      <aside className="wallet-navigation">
-        <div className="wallet-identity">
-          <span className="wallet-avatar">D</span>
-          <div>
-            <strong>DUO</strong>
-            <code>{shortAddress(walletAddress)}</code>
-          </div>
-        </div>
-
-        <nav aria-label="Wallet sections">
-          <button className={view === "home" ? "active" : undefined} aria-current={view === "home" ? "page" : undefined} onClick={() => chooseView("home")}>
-            <span className="sidebar-icon"><WalletIcon name="home" /></span>
-            Home
-          </button>
-          <button className={view === "agent" ? "active" : undefined} aria-current={view === "agent" ? "page" : undefined} onClick={() => chooseView("agent")}>
-            <span className="sidebar-icon"><WalletIcon name="agent" /></span>
-            Agent setup
-          </button>
-        </nav>
-
-        <div className="network-badge">
-          <span className="network-dot" />
-          <div><span>Network</span><strong>{MONAD_TESTNET.name}</strong></div>
-        </div>
-      </aside>
-
-      <div className="wallet-content">
-        {view === "home" ? (
-          <section aria-labelledby="home-title">
-            <div className="workspace-heading">
-              <h1 id="home-title">Home</h1>
-              <button className="refresh-button" onClick={() => void loadAssets()} disabled={loadingAssets}>
-                {loadingAssets ? "Refreshing…" : "Refresh"}
-              </button>
-            </div>
-
-            <div className="portfolio-card">
-              <span>Portfolio value</span>
-              <strong>{loadingAssets && assets === undefined ? "—" : formatUsd(portfolioValueUsd) ?? "$0.00"}</strong>
-              <small>Fungible assets on Monad Testnet · Zerion</small>
-            </div>
-
-            <div className="quick-actions" aria-label="Wallet actions">
-              <button onClick={() => chooseView("send")}><span><WalletIcon name="send" /></span><strong>Send</strong></button>
-              <button onClick={() => chooseView("receive")}><span><WalletIcon name="receive" /></span><strong>Receive</strong></button>
-              <button onClick={openFundingOptions}><span><WalletIcon name="fund" /></span><strong>Fund</strong></button>
-            </div>
-
-            <div className="token-toolbar">
-              <div className="token-tabs" role="tablist" aria-label="Asset types">
-                <button role="tab" aria-selected="true">Tokens</button>
+    <section className="duo-wallet-shell dark min-h-[700px] overflow-hidden rounded-2xl border bg-background text-foreground shadow-2xl" aria-label="DUO wallet">
+      <SidebarProvider className="min-h-0" style={{ minHeight: 700 }}>
+        <Sidebar collapsible="none" className="w-16 md:w-52">
+          <SidebarHeader>
+            <div className="flex items-center gap-3 p-2">
+              <Avatar size="lg"><AvatarFallback className="bg-primary text-primary-foreground">D</AvatarFallback></Avatar>
+              <div className="hidden min-w-0 md:grid md:gap-0.5">
+                <strong className="text-sm">DUO</strong>
+                <code className="truncate text-xs text-muted-foreground">{shortAddress(walletAddress)}</code>
               </div>
-              <span className="single-network"><span className="network-dot" /> {MONAD_TESTNET.name}</span>
             </div>
-
-            <div className="asset-table-header" aria-hidden="true">
-              <span>Asset</span><span>Balance</span><span>Portfolio</span><span>Price</span>
+          </SidebarHeader>
+          <SidebarContent>
+            <SidebarGroup><SidebarGroupContent><SidebarMenu>
+              <SidebarMenuItem><SidebarMenuButton isActive={view === "home"} tooltip="Home" onClick={() => chooseView("home")}>
+                <HouseIcon /><span className="hidden md:inline">Home</span>
+              </SidebarMenuButton></SidebarMenuItem>
+              <SidebarMenuItem><SidebarMenuButton isActive={view === "agent"} tooltip="Agent setup" onClick={() => chooseView("agent")}>
+                <BotIcon /><span className="hidden md:inline">Agent setup</span>
+              </SidebarMenuButton></SidebarMenuItem>
+            </SidebarMenu></SidebarGroupContent></SidebarGroup>
+          </SidebarContent>
+          <SidebarFooter>
+            <div className="flex items-center gap-2 p-2">
+              <span className="size-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+              <div className="hidden min-w-0 md:grid md:gap-0.5">
+                <span className="text-[10px] tracking-wider text-muted-foreground uppercase">Network</span>
+                <strong className="truncate text-xs">{MONAD_TESTNET.name}</strong>
+              </div>
             </div>
+          </SidebarFooter>
+        </Sidebar>
 
-            {assetError ? (
-              <div className="workspace-error">
-                <p>{assetErrorMessage(assetError)}</p>
-                <button className="text-button" onClick={() => void loadAssets()}>Try again</button>
-              </div>
-            ) : loadingAssets && !assets ? (
-              <div className="asset-loading"><span className="pulse" /> Reading onchain balance…</div>
-            ) : (
-              <div className="asset-rows">
-                {assets?.map((asset) => (
-                  <div className="asset-row" key={asset.id}>
-                    <span className="asset-token">
-                      {asset.icon_url ? <img src={asset.icon_url} alt="" /> : asset.symbol.slice(0, 1).toUpperCase()}
-                    </span>
-                    <span className="asset-name"><strong>{asset.name}</strong><small>{asset.symbol}</small></span>
-                    <span className="asset-balance"><strong>{formatUsd(asset.value_usd) ?? "—"}</strong><small>{asset.amount} {asset.symbol}</small></span>
-                    <span className="asset-allocation">{formatAllocation(asset.value_usd, portfolioValueUsd)}</span>
-                    <span className="asset-price">
-                      <strong>{formatPrice(asset.price_usd) ?? "—"}</strong>
-                      {asset.change_1d !== null ? (
-                        <small className={asset.change_1d >= 0 ? "positive" : "negative"}>{asset.change_1d >= 0 ? "▲" : "▼"} {Math.abs(asset.change_1d).toFixed(2)}%</small>
-                      ) : <small>Price unavailable</small>}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+        <SidebarInset className="min-w-0">
+          <div className="mx-auto grid w-full max-w-5xl gap-8 p-5 md:p-8 lg:p-12">
+            {view === "home" ? <section className="grid gap-8" aria-labelledby="home-title">
+              <WorkspaceHeading id="home-title" title="Home" action={<Button variant="ghost" onClick={() => void loadAssets()} disabled={loadingAssets}>
+                {loadingAssets ? <Spinner data-icon="inline-start" /> : <RefreshCwIcon data-icon="inline-start" />}
+                {loadingAssets ? "Refreshing" : "Refresh"}
+              </Button>} />
 
-            {hasActivity === false ? (
-              <div className="first-run-setup">
-                <div className="first-run-copy">
-                  <span>Next step</span>
-                  <h2>Connect DUO to your agent</h2>
-                  <p>Your wallet has no transfer activity yet. Install the MCP server to let your agent prepare requests for you to review.</p>
+              <Card className="text-center">
+                <CardHeader>
+                  <CardTitle className="text-xs tracking-wider text-muted-foreground uppercase">Portfolio value</CardTitle>
+                  <CardAction><Badge variant="outline">Zerion</Badge></CardAction>
+                </CardHeader>
+                <CardContent>{loadingAssets && assets === undefined
+                  ? <Skeleton className="mx-auto h-14 w-44" />
+                  : <strong className="text-5xl font-semibold tracking-tight md:text-6xl">{formatUsd(portfolioValueUsd) ?? "$0.00"}</strong>}
+                </CardContent>
+                <CardFooter className="justify-center text-xs text-muted-foreground">Fungible assets on {MONAD_TESTNET.name}</CardFooter>
+              </Card>
+
+              <div className="grid grid-cols-3 gap-3" aria-label="Wallet actions">
+                <Button className="h-24 flex-col gap-2" variant="outline" onClick={() => chooseView("send")}><SendIcon data-icon="inline-start" />Send</Button>
+                <Button className="h-24 flex-col gap-2" variant="outline" onClick={() => chooseView("receive")}><DownloadIcon data-icon="inline-start" />Receive</Button>
+                <Button className="h-24 flex-col gap-2" variant="outline" onClick={openFundingOptions}><PlusIcon data-icon="inline-start" />Fund</Button>
+              </div>
+
+              <Tabs defaultValue="tokens">
+                <div className="flex items-center justify-between gap-4">
+                  <TabsList variant="line"><TabsTrigger value="tokens">Tokens</TabsTrigger></TabsList>
+                  <Badge variant="outline"><span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />{MONAD_TESTNET.name}</Badge>
                 </div>
-                <AgentSetup mcpUrl={mcpUrl} />
-              </div>
-            ) : null}
-          </section>
-        ) : null}
+                <TabsContent value="tokens">
+                  {assetError ? <Alert variant="destructive">
+                    <AlertCircleIcon /><AlertTitle>Assets unavailable</AlertTitle><AlertDescription>{assetErrorMessage(assetError)}</AlertDescription>
+                    <AlertAction><Button variant="outline" size="sm" onClick={() => void loadAssets()}>Try again</Button></AlertAction>
+                  </Alert> : <Card>
+                    <CardHeader><CardTitle>Assets</CardTitle><CardDescription>Tokens held by this DUO wallet.</CardDescription></CardHeader>
+                    <CardContent className="px-0"><Table>
+                      <TableHeader><TableRow>
+                        <TableHead className="pl-5">Asset</TableHead><TableHead>Balance</TableHead>
+                        <TableHead className="hidden md:table-cell">Portfolio</TableHead><TableHead className="pr-5 text-right">Price</TableHead>
+                      </TableRow></TableHeader>
+                      <TableBody>{loadingAssets && !assets ? [0, 1, 2].map((row) => <TableRow key={row}>
+                        <TableCell className="pl-5"><Skeleton className="h-10 w-36" /></TableCell><TableCell><Skeleton className="h-10 w-24" /></TableCell>
+                        <TableCell className="hidden md:table-cell"><Skeleton className="h-5 w-14" /></TableCell><TableCell className="pr-5"><Skeleton className="ml-auto h-10 w-24" /></TableCell>
+                      </TableRow>) : assets?.map((asset) => <TableRow key={asset.id}>
+                        <TableCell className="pl-5"><div className="flex items-center gap-3">
+                          <Avatar size="lg">{asset.icon_url ? <AvatarImage src={asset.icon_url} alt="" /> : null}<AvatarFallback>{asset.symbol.slice(0, 1).toUpperCase()}</AvatarFallback></Avatar>
+                          <div className="grid gap-0.5"><strong>{asset.name}</strong><span className="text-xs text-muted-foreground">{asset.symbol}</span></div>
+                        </div></TableCell>
+                        <TableCell><div className="grid gap-0.5"><strong>{formatUsd(asset.value_usd) ?? "—"}</strong><span className="text-xs text-muted-foreground">{asset.amount} {asset.symbol}</span></div></TableCell>
+                        <TableCell className="hidden text-muted-foreground md:table-cell">{formatAllocation(asset.value_usd, portfolioValueUsd)}</TableCell>
+                        <TableCell className="pr-5 text-right"><div className="grid gap-0.5"><strong>{formatPrice(asset.price_usd) ?? "—"}</strong>
+                          {asset.change_1d !== null ? <span className={asset.change_1d < 0 ? "text-xs text-destructive" : "text-xs text-primary"}>{asset.change_1d >= 0 ? "▲" : "▼"} {Math.abs(asset.change_1d).toFixed(2)}%</span> : <span className="text-xs text-muted-foreground">Price unavailable</span>}
+                        </div></TableCell>
+                      </TableRow>)}</TableBody>
+                    </Table></CardContent>
+                    <CardFooter className="text-xs text-muted-foreground">Balances are indexed by Zerion on Monad Testnet.</CardFooter>
+                  </Card>}
+                </TabsContent>
+              </Tabs>
 
-        {view === "send" ? (
-          <section aria-labelledby="send-title" className="focused-wallet-view">
-            <div className="workspace-heading">
-              <div><span className="panel-label">Transfer</span><h1 id="send-title">Send MON</h1></div>
-              <button className="refresh-button" onClick={() => chooseView("home")}>Back home</button>
-            </div>
-            <form className="send-form" onSubmit={prepareSend}>
-              <label><span>Recipient address</span><input value={recipient} onChange={(event) => setRecipient(event.target.value)} placeholder="0x…" autoComplete="off" spellCheck={false} /></label>
-              <label><span>Amount</span><div className="amount-input"><input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" /><strong>MON</strong></div></label>
-              <div className="available-balance"><span>Available: {nativeAsset?.amount ?? "—"} MON</span><span>Network fee is additional</span></div>
-              <div className="send-review-note"><span aria-hidden="true">✓</span><p>You will review the full recipient and amount before DUO asks your wallet to sign.</p></div>
-              {sendError ? <p className="inline-error" role="alert">{sendError}</p> : null}
-              <button className="primary-button wide" disabled={preparing}>{preparing ? "Preparing review…" : "Review transfer"}</button>
-            </form>
-          </section>
-        ) : null}
+              {hasActivity === false ? <Card>
+                <CardHeader><CardTitle>Connect DUO to your agent</CardTitle><CardDescription>This wallet has no transfer activity yet. Install the MCP server so your agent can prepare requests for you to review.</CardDescription><CardAction><Badge variant="secondary">Next step</Badge></CardAction></CardHeader>
+                <CardContent><AgentSetup mcpUrl={mcpUrl} /></CardContent>
+                <CardFooter className="text-xs text-muted-foreground">This guide moves to Agent setup after your first transaction.</CardFooter>
+              </Card> : null}
+            </section> : null}
 
-        {view === "receive" ? (
-          <section aria-labelledby="receive-title" className="focused-wallet-view">
-            <div className="workspace-heading">
-              <div><span className="panel-label">Funding</span><h1 id="receive-title">Receive MON</h1></div>
-              <button className="refresh-button" onClick={() => chooseView("home")}>Back home</button>
-            </div>
-            <div className="receive-card">
-              <div className="receive-mark" aria-hidden="true"><span>D</span></div>
-              <h2>Your DUO address</h2>
-              <p>Send MON on Monad Testnet to this address only.</p>
-              <code>{walletAddress}</code>
-              <div className="receive-actions">
-                <button className="primary-button" onClick={copyAddress}>{copied ? "Copied" : "Copy address"}</button>
-                <button className="secondary-button" onClick={openFundingOptions}>Funding options</button>
-              </div>
-            </div>
-            <div className="network-warning"><strong>Monad Testnet only</strong><p>Assets sent on another network may not appear in DUO. Use test funds only.</p></div>
-            <a className="explorer-link" href={`${MONAD_TESTNET.blockExplorerUrl}/address/${walletAddress}`} target="_blank" rel="noreferrer">View address on explorer ↗</a>
-          </section>
-        ) : null}
+            {view === "send" ? <section className="grid gap-8" aria-labelledby="send-title">
+              <WorkspaceHeading id="send-title" eyebrow="Transfer" title="Send MON" action={backHome} />
+              <Card><form onSubmit={prepareSend}>
+                <CardHeader><CardTitle>Transfer details</CardTitle><CardDescription>Send native MON on Monad Testnet.</CardDescription></CardHeader>
+                <CardContent><FieldGroup>
+                  <Field data-invalid={Boolean(sendError)}><FieldLabel htmlFor="recipient">Recipient address</FieldLabel>
+                    <Input id="recipient" value={recipient} onChange={(event) => setRecipient(event.target.value)} placeholder="0x…" autoComplete="off" spellCheck={false} aria-invalid={Boolean(sendError)} />
+                  </Field>
+                  <Field data-invalid={Boolean(sendError)}><FieldLabel htmlFor="amount">Amount</FieldLabel>
+                    <div className="relative"><Input id="amount" className="pr-16" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" aria-invalid={Boolean(sendError)} />
+                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-medium text-muted-foreground">MON</span>
+                    </div>
+                    <FieldDescription className="flex justify-between gap-3"><span>Available: {nativeAsset?.amount ?? "—"} MON</span><span>Network fee is additional</span></FieldDescription>
+                    {sendError ? <FieldError>{sendError}</FieldError> : null}
+                  </Field>
+                  <Alert><CheckCircle2Icon /><AlertTitle>Human review stays in the loop</AlertTitle><AlertDescription>You will review the recipient and amount before DUO asks your wallet to sign.</AlertDescription></Alert>
+                </FieldGroup></CardContent>
+                <CardFooter><Button className="w-full" size="lg" disabled={preparing}>{preparing ? <Spinner data-icon="inline-start" /> : <SendIcon data-icon="inline-start" />}{preparing ? "Preparing review" : "Review transfer"}</Button></CardFooter>
+              </form></Card>
+            </section> : null}
 
-        {view === "agent" ? (
-          <section aria-labelledby="agent-view-title" className="focused-wallet-view agent-view">
-            <div className="workspace-heading">
-              <div><span className="panel-label">Settings</span><h1 id="agent-view-title">Agent setup</h1></div>
-              <button className="refresh-button" onClick={() => chooseView("home")}>Back home</button>
-            </div>
-            <AgentSetup mcpUrl={mcpUrl} />
-          </section>
-        ) : null}
-      </div>
+            {view === "receive" ? <section className="grid gap-8" aria-labelledby="receive-title">
+              <WorkspaceHeading id="receive-title" eyebrow="Funding" title="Receive MON" action={backHome} />
+              <Card className="text-center">
+                <CardHeader><Avatar size="lg" className="mx-auto"><AvatarFallback className="bg-primary text-primary-foreground">D</AvatarFallback></Avatar><CardTitle>Your DUO address</CardTitle><CardDescription>Send MON on Monad Testnet to this address only.</CardDescription></CardHeader>
+                <CardContent><code className="block break-all rounded-lg bg-muted p-4 text-sm">{walletAddress}</code></CardContent>
+                <CardFooter className="justify-center gap-2"><Button onClick={copyAddress}><CopyIcon data-icon="inline-start" />{copied ? "Copied" : "Copy address"}</Button><Button variant="outline" onClick={openFundingOptions}><WalletCardsIcon data-icon="inline-start" />Funding options</Button></CardFooter>
+              </Card>
+              <Alert><AlertCircleIcon /><AlertTitle>Monad Testnet only</AlertTitle><AlertDescription>Assets sent on another network may not appear in DUO. Use test funds only.</AlertDescription></Alert>
+              <a className={buttonVariants({ variant: "link" })} href={`${MONAD_TESTNET.blockExplorerUrl}/address/${walletAddress}`} target="_blank" rel="noreferrer">View address on explorer<ExternalLinkIcon data-icon="inline-end" /></a>
+            </section> : null}
+
+            {view === "agent" ? <section className="grid gap-8" aria-labelledby="agent-view-title">
+              <WorkspaceHeading id="agent-view-title" eyebrow="Settings" title="Agent setup" action={backHome} />
+              <Card><CardHeader><CardTitle>Install the DUO MCP server</CardTitle><CardDescription>Keep these instructions available whenever you connect a new agent.</CardDescription></CardHeader><CardContent><AgentSetup mcpUrl={mcpUrl} /></CardContent><CardFooter><Separator /></CardFooter></Card>
+            </section> : null}
+          </div>
+        </SidebarInset>
+      </SidebarProvider>
     </section>
   );
 }
