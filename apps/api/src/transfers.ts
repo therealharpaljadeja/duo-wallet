@@ -23,6 +23,7 @@ const createTransferSchema = z.object({
   recipient_address: walletAddressSchema,
   amount: z.string().min(1).max(80),
 });
+const activityQuerySchema = z.object({ wallet_address: walletAddressSchema });
 const DUO_WEB_CLIENT_ID = "duo-web";
 
 async function getTransfer(db: Database, id: string) {
@@ -69,6 +70,31 @@ export async function registerTransferRoutes(
   },
 ) {
   const { db, environment, verifyDynamicToken } = dependencies;
+
+  app.get("/api/transfers/activity", async (request, reply) => {
+    const token = getBearerToken(request);
+    const query = activityQuerySchema.safeParse(request.query);
+    if (!token || !query.success) {
+      return reply.code(400).send({ error: "invalid_request" });
+    }
+
+    let identity: DynamicIdentity;
+    try {
+      identity = await verifyDynamicToken(token, query.data.wallet_address);
+    } catch (error) {
+      request.log.warn({ err: error }, "Dynamic transfer activity lookup failed");
+      return reply.code(401).send({ error: "invalid_dynamic_session" });
+    }
+
+    const { wallet } = await upsertIdentity(db, identity);
+    const [activity] = await db
+      .select({ id: transferRequests.id })
+      .from(transferRequests)
+      .where(eq(transferRequests.walletId, wallet.id))
+      .limit(1);
+
+    return { has_activity: Boolean(activity) };
+  });
 
   app.post("/api/transfers", async (request, reply) => {
     const token = getBearerToken(request);
